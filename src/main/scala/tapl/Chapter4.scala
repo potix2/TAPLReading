@@ -30,22 +30,13 @@ object Chapter4 extends App {
   def eval1(t:Term):Term = t match {
     case TmIf(_, TmTrue(_), t2, t3) => t2
     case TmIf(_, TmFalse(_), t2, t3) => t3
-    case TmIf(fi, t1, t2, t3) =>
-      TmIf(fi, eval1(t1), t2, t3)
-    case TmSucc(_, t1) => eval1(t1)
+    case TmIf(fi, t1, t2, t3) => TmIf(fi, eval1(t1), t2, t3)
+    case TmSucc(_, t1) => TmSucc(info, eval1(t1))
     case TmPred(_, TmZero(_)) => TmZero(info)
-    case TmPred(fi, TmSucc(_, t1)) =>
-      if(isnumericval(t1))
-        t1
-      else
-        TmPred(fi, eval1(t1))
+    case TmPred(fi, TmSucc(_, nv1)) if isnumericval(nv1) => nv1
     case TmPred(fi, t1) => TmPred(fi, eval1(t1))
     case TmIsZero(_, TmZero(_)) => TmTrue(info)
-    case TmIsZero(fi, TmSucc(_, t1)) =>
-      if(isnumericval(t1))
-        TmFalse(info)
-      else
-        TmIsZero(fi, eval1(t1))
+    case TmIsZero(fi, TmSucc(_, nv1)) if isnumericval(nv1) => TmFalse(info)
     case TmIsZero(f1, t1) => TmIsZero(f1, eval1(t1))
     case _ => throw new Exception("NoRuleApplies")
   }
@@ -95,11 +86,21 @@ object Chapter4 extends App {
     def value : Parser[Term] = (
           "true" ^^ (_ => TmTrue(info))
         | "false" ^^ (_ => TmFalse(info))
+        | "0" ^^ (_ => TmZero(info))
       )
+    def succExpr : Parser[Term] = ( "succ" ~> term ) ^^ {
+      case t => TmSucc(info, t)
+    }
+    def predExpr : Parser[Term] = ( "pred" ~> term ) ^^ {
+      case t => TmPred(info, t)
+    }
+    def isZeroExpr : Parser[Term] = ( "iszero" ~> term ) ^^ {
+      case t => TmIsZero(info, t)
+    }
     def ifExpr : Parser[Term] = ( "if" ~> term) ~ ("then" ~> term) ~ ("else" ~> term) ^^ {
       case t1 ~ t2 ~ t3 => TmIf(info, t1, t2, t3)
     }
-    def term : Parser[Term] = value | ifExpr
+    def term : Parser[Term] = value | succExpr | predExpr | isZeroExpr | ifExpr
   }
 
   object ParseExpr extends ArithmeticExpressionParser {
@@ -109,6 +110,8 @@ object Chapter4 extends App {
     def run() {
       showPrompt()
       for( ln <- io.Source.stdin.getLines() ) {
+        if ( ln == "exit" ) return
+
         val res = parseAll(term, ln)
         res match {
           case ParseExpr.Success(r, n) => evalPrint(r)
